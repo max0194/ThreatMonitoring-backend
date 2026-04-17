@@ -2,6 +2,7 @@ package api
 
 import (
 	"log"
+	"os"
 	"threat-monitoring/internal/app/handler"
 	"threat-monitoring/internal/app/repository"
 
@@ -12,15 +13,47 @@ import (
 func StartServer() {
 	log.Println("Starting Threat Monitoring Server")
 
-	repo, err := repository.NewRepository()
-	if err != nil {
-		logrus.Error("ошибка инициализации репозитория")
+	dbUser := os.Getenv("DB_USER")
+	if dbUser == "" {
+		dbUser = "postgres"
+	}
+	dbPassword := os.Getenv("DB_PASSWORD")
+	if dbPassword == "" {
+		dbPassword = ""
+	}
+	dbHost := os.Getenv("DB_HOST")
+	if dbHost == "" {
+		dbHost = "127.0.0.1"
+	}
+	dbPort := os.Getenv("DB_PORT")
+	if dbPort == "" {
+		dbPort = "5433"
+	}
+	dbName := os.Getenv("DB_NAME")
+	if dbName == "" {
+		dbName = "threat_monitoring"
 	}
 
-	handler := handler.NewHandler(repo)
+	dsn := repository.GetDSN(dbUser, dbPassword, dbHost, dbPort, dbName)
+	repo, err := repository.NewDatabase(dsn)
+	if err != nil {
+		logrus.Fatal("Ошибка при подключении к БД:", err)
+		return
+	}
+
+	h := handler.NewHandler(repo)
 
 	r := gin.Default()
+	r.Use(gin.Recovery())
+	r.Use(gin.Logger())
+
+	r.Use(func(c *gin.Context) {
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		c.Next()
+	})
+
 	r.LoadHTMLGlob("../frontend/templates/*")
+
 	r.GET("/static/styles/style.css", func(c *gin.Context) {
 		logrus.Info("Запрос CSS")
 		c.Header("Content-Type", "text/css")
@@ -28,16 +61,24 @@ func StartServer() {
 		logrus.Info("CSS получен")
 	})
 
-	r.GET("/login", handler.GetLogin)
-	r.POST("/login", handler.HandleLogin)
+	r.GET("/login", h.GetLogin)
+	r.POST("/login", h.HandleLogin)
+	r.GET("/logout", h.Logout)
 
-	r.GET("/employee", handler.GetEmployeeIndex)
+	r.GET("/employee", h.GetEmployeeIndex)
+	r.GET("/employee/requests", h.GetEmployeeRequests)
+	r.POST("/create-request", h.CreateRequest)
+	r.POST("/create-fact", h.CreateFact)
 
-	r.GET("/specialist", handler.GetSpecialistIndex)
+	r.GET("/specialist", h.GetSpecialistIndex)
 
-	r.GET("/request/:id", handler.GetRequest)
-	r.GET("/threat/:id", handler.GetThreat)
+	r.GET("/request/:id", h.GetRequest)
+	r.GET("/threat/:id", h.GetThreat)
+	r.POST("/request/:id/delete", h.DeleteRequest)
+	r.POST("/request/:id/update-status", h.UpdateRequestStatus)
 
-	r.Run(":8080")
+	if err := r.Run(":8080"); err != nil {
+		logrus.Fatal("Ошибка при запуске сервера:", err)
+	}
 	log.Println("Server down")
 }

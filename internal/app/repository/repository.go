@@ -1,94 +1,175 @@
 package repository
 
-type Worker struct {
-	ID         int
-	FullName   string
-	Phone      string
-	Post       string
-	Department string
-	Email      string
-	Password   string
-}
-
-type Specialist struct {
-	ID       int
-	Phone    string
-	Email    string
-	Password string
-}
-
-type Category struct {
-	ID       int
-	Name     string
-	Priority int
-}
-
-type ThreatType struct {
-	ID         int
-	CategoryID int
-	Name       string
-}
-
-type Request struct {
-	ID          int
-	TypeID      int
-	WorkerID    int
-	Title       string
-	Description string
-	Category    string
-	ThreatType  string
-	Status      string
-	CreatedAt   string
-}
-
-type Fact struct {
-	ID            int
-	RequestID     int
-	Title         string
-	Description   string
-	CreatedAt     string
-	ScreenshotURL string
-}
+import (
+	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
+)
 
 type Repository struct {
-	Workers     []Worker
-	Categories  []Category
-	ThreatTypes []ThreatType
-	Requests    []Request
-	Facts       []Fact
-	Specialists []Specialist
+	DB          *gorm.DB
+	MinIOClient *MinIOClient
 }
 
-func NewRepository() (*Repository, error) {
-
-	repo := &Repository{
-		Categories: []Category{
-			{ID: 1, Name: "Вредоносное ПО", Priority: 1},
-			{ID: 2, Name: "Фишинг", Priority: 2},
-			{ID: 3, Name: "DDoS атаки", Priority: 1},
-		},
-		ThreatTypes: []ThreatType{
-			{ID: 1, CategoryID: 1, Name: "Троян"},
-			{ID: 2, CategoryID: 1, Name: "Вирус-вымогатель"},
-			{ID: 3, CategoryID: 2, Name: "Email фишинг"},
-			{ID: 4, CategoryID: 2, Name: "SMS фишинг"},
-			{ID: 5, CategoryID: 3, Name: "HTTP Flood"},
-		},
-		Requests: []Request{
-			{ID: 1, Title: "Проблема в ПО", Description: "Описание угрозы", Category: "Артефакты", ThreatType: "Полосы в ПО", Status: "В работе", CreatedAt: "2026-02-20 12:00", TypeID: 1, WorkerID: 1},
-		},
-		Facts: []Fact{
-			{ID: 1, RequestID: 1, Title: "Первое появление", Description: "Заметил при открытии браузера", CreatedAt: "2024-05-20 12:00", ScreenshotURL: "http://localhost:9001/api/v1/download-shared-object/aHR0cDovLzEyNy4wLjAuMTo5MDAwL3RocmVhdC1yZXBvcnRzLzIwMjYtMDItMjRfMDgtNDUtMjAucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9WDBZWEFTM0Y2WDJPTDBQSlkxNU0lMkYyMDI2MDIyNiUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjAyMjZUMDUyNTExWiZYLUFtei1FeHBpcmVzPTQzMjAwJlgtQW16LVNlY3VyaXR5LVRva2VuPWV5SmhiR2NpT2lKSVV6VXhNaUlzSW5SNWNDSTZJa3BYVkNKOS5leUpoWTJObGMzTkxaWGtpT2lKWU1GbFlRVk16UmpaWU1rOU1NRkJLV1RFMVRTSXNJbVY0Y0NJNk1UYzNNakV5Tmpjd05Dd2ljR0Z5Wlc1MElqb2liV2x1YVc5aFpHMXBiaUo5LmhCWnZVLWxuaWZ5c09pWkV6VGlTUnRFLXU4aUVhY1R6WWlYMmcxaXVzX1ZCdmJfUUN6MXRocGxxb241MDA1eTd4RVdfWi1YSzVCNnNaMFFWNDc4eXlRJlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCZ2ZXJzaW9uSWQ9bnVsbCZYLUFtei1TaWduYXR1cmU9NTFlMTg5MGFmYTZlNTM4Nzg5MWE1YjQ4ZjNiMzdjZjIzZmY0ZGIzN2NlYWJjOThmOGVlNGNkZjdlYzQ3YzU1ZQ"},
-			{ID: 2, RequestID: 1, Title: "Повторный инцидент", Description: "Появилось снова через час", CreatedAt: "2024-05-20 13:00", ScreenshotURL: "http://localhost:9001/api/v1/download-shared-object/aHR0cDovLzEyNy4wLjAuMTo5MDAwL3RocmVhdC1yZXBvcnRzLzIwMjYtMDItMjRfMDgtNDUtMjAucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9WDBZWEFTM0Y2WDJPTDBQSlkxNU0lMkYyMDI2MDIyNiUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjAyMjZUMDUyNTExWiZYLUFtei1FeHBpcmVzPTQzMjAwJlgtQW16LVNlY3VyaXR5LVRva2VuPWV5SmhiR2NpT2lKSVV6VXhNaUlzSW5SNWNDSTZJa3BYVkNKOS5leUpoWTJObGMzTkxaWGtpT2lKWU1GbFlRVk16UmpaWU1rOU1NRkJLV1RFMVRTSXNJbVY0Y0NJNk1UYzNNakV5Tmpjd05Dd2ljR0Z5Wlc1MElqb2liV2x1YVc5aFpHMXBiaUo5LmhCWnZVLWxuaWZ5c09pWkV6VGlTUnRFLXU4aUVhY1R6WWlYMmcxaXVzX1ZCdmJfUUN6MXRocGxxb241MDA1eTd4RVdfWi1YSzVCNnNaMFFWNDc4eXlRJlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCZ2ZXJzaW9uSWQ9bnVsbCZYLUFtei1TaWduYXR1cmU9NTFlMTg5MGFmYTZlNTM4Nzg5MWE1YjQ4ZjNiMzdjZjIzZmY0ZGIzN2NlYWJjOThmOGVlNGNkZjdlYzQ3YzU1ZQ"},
-		},
-		Workers: []Worker{
-			{ID: 1, FullName: "Иванов Иван", Phone: "+79001234567", Post: "Разработчик", Department: "IT", Email: "ivanov@company.com", Password: "pass123"},
-			{ID: 2, FullName: "Петров Петр", Phone: "+79007654321", Post: "Аналитик", Department: "Безопасность", Email: "petrov@company.com", Password: "pass456"},
-		},
-		Specialists: []Specialist{
-			{ID: 1, Phone: "+79001112233", Email: "spec1@company.com", Password: "specpass1"},
-			{ID: 2, Phone: "+79004445566", Email: "spec2@company.com", Password: "specpass2"},
-		},
+func NewRepository(db *gorm.DB, minioClient *MinIOClient) *Repository {
+	return &Repository{
+		DB:          db,
+		MinIOClient: minioClient,
 	}
-	return repo, nil
+}
+
+func (r *Repository) GetUserByEmail(email string) (*User, error) {
+	var user User
+	if err := r.DB.Where("email = ?", email).First(&user).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		logrus.Error("Ошибка при получении пользователя:", err)
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *Repository) GetUserByID(id int) (*User, error) {
+	var user User
+	if err := r.DB.First(&user, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		logrus.Error("Ошибка при получении пользователя:", err)
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *Repository) GetAllCategories() ([]Category, error) {
+	var categories []Category
+	if err := r.DB.Find(&categories).Error; err != nil {
+		logrus.Error("Ошибка при получении категорий:", err)
+		return nil, err
+	}
+	return categories, nil
+}
+
+func (r *Repository) GetAllThreatTypes() ([]ThreatType, error) {
+	var threatTypes []ThreatType
+	if err := r.DB.Preload("Category").Find(&threatTypes).Error; err != nil {
+		logrus.Error("Ошибка при получении типов угроз:", err)
+		return nil, err
+	}
+	return threatTypes, nil
+}
+
+func (r *Repository) GetThreatTypeByID(id int) (*ThreatType, error) {
+	var threatType ThreatType
+	if err := r.DB.Preload("Category").First(&threatType, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		logrus.Error("Ошибка при получении типа угрозы:", err)
+		return nil, err
+	}
+	return &threatType, nil
+}
+
+func (r *Repository) GetAllRequests() ([]Request, error) {
+	var requests []Request
+	if err := r.DB.Where("status != ?", "deleted").
+		Preload("Creator").
+		Preload("ThreatType.Category").
+		Preload("RequestFacts").
+		Find(&requests).Error; err != nil {
+		logrus.Error("Ошибка при получении заявок:", err)
+		return nil, err
+	}
+	return requests, nil
+}
+
+func (r *Repository) GetRequestByID(id int) (*Request, error) {
+	var request Request
+	if err := r.DB.Where("id = ? AND status != ?", id, "deleted").
+		Preload("Creator").
+		Preload("ThreatType.Category").
+		Preload("RequestFacts").
+		First(&request).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		logrus.Error("Ошибка при получении заявки:", err)
+		return nil, err
+	}
+	return &request, nil
+}
+
+func (r *Repository) CreateRequest(request *Request) error {
+	if err := r.DB.Create(request).Error; err != nil {
+		logrus.Error("Ошибка при создании заявки:", err)
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) GetDraftRequestByUserID(userID int) (*Request, error) {
+	var request Request
+	if err := r.DB.Where("creator_id = ? AND status = ?", userID, "draft").
+		Preload("Creator").
+		Preload("RequestFacts").
+		Preload("RequestFacts").
+		First(&request).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		logrus.Error("Ошибка при получении черновика заявки:", err)
+		return nil, err
+	}
+	return &request, nil
+}
+
+func (r *Repository) DeleteRequest(requestID int) error {
+	if err := r.DB.Model(&Request{}).Where("id = ?", requestID).Update("status", "deleted").Error; err != nil {
+		logrus.Error("Ошибка при удалении заявки:", err)
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) CreateFact(fact *Fact) error {
+	var factCount int64
+	if err := r.DB.Model(&Fact{}).Where("request_id = ?", fact.RequestID).Count(&factCount).Error; err != nil {
+		logrus.Error("Ошибка при подсчете фактов заявки:", err)
+		return err
+	}
+
+	if factCount == 0 {
+		if err := r.UpdateRequestStatus(fact.RequestID, "awaiting"); err != nil {
+			logrus.Error("Ошибка при обновлении статуса заявки на awaiting:", err)
+			return err
+		}
+	}
+
+	if err := r.DB.Create(fact).Error; err != nil {
+		logrus.Error("Ошибка при создании факта:", err)
+		return err
+	}
+	logrus.Info("Факт успешно создан. ID: ", fact.ID, ", RequestID: ", fact.RequestID)
+	return nil
+}
+
+func (r *Repository) GetFactsByRequestID(requestID int) ([]Fact, error) {
+	var facts []Fact
+	if err := r.DB.Where("request_id = ?", requestID).
+		Order("created_at ASC").
+		Find(&facts).Error; err != nil {
+		logrus.Error("Ошибка при получении фактов заявки:", err)
+		return nil, err
+	}
+	logrus.Info("Найдено фактов для заявки ", requestID, ": ", len(facts))
+	return facts, nil
+}
+
+func (r *Repository) UpdateRequestStatus(requestID int, status string) error {
+	if err := r.DB.Model(&Request{}).Where("id = ?", requestID).Update("status", status).Error; err != nil {
+		logrus.Error("Ошибка при обновлении статуса заявки:", err)
+		return err
+	}
+	return nil
 }
