@@ -5,11 +5,25 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"threat-monitoring/internal/app/repository"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	apiUserID    = 1
+	apiUserEmail = "api_user@example.com"
+	apiUserName  = "API Пользователь"
+	apiUserPhone = "+79000000000"
+	apiUserType  = "employee"
+)
+
+var (
+	apiUser     *repository.User
+	apiUserOnce sync.Once
 )
 
 type Handler struct {
@@ -20,6 +34,54 @@ func NewHandler(r *repository.Repository) *Handler {
 	return &Handler{
 		Repository: r,
 	}
+}
+
+func (h *Handler) getCurrentUserID(ctx *gin.Context) (int, error) {
+	userIDStr, err := ctx.Cookie("user_id")
+	if err != nil {
+		return 0, err
+	}
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		return 0, err
+	}
+	return userID, nil
+}
+
+func (h *Handler) getCurrentUserType(ctx *gin.Context) (string, error) {
+	userType, err := ctx.Cookie("user_type")
+	if err != nil {
+		return "", err
+	}
+	return userType, nil
+}
+
+func getAPIUser() *repository.User {
+	apiUserOnce.Do(func() {
+		apiUser = &repository.User{
+			ID:       apiUserID,
+			Email:    apiUserEmail,
+			FullName: apiUserName,
+			Phone:    apiUserPhone,
+			UserType: apiUserType,
+		}
+	})
+	return apiUser
+}
+
+func (h *Handler) writeJSONError(ctx *gin.Context, status int, message string) {
+	ctx.JSON(status, gin.H{"status": "error", "message": message})
+}
+
+func (h *Handler) parseDateParam(value string) (*time.Time, error) {
+	if value == "" {
+		return nil, nil
+	}
+	t, err := time.Parse("2006-01-02", value)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
 }
 
 func (h *Handler) GetEmployeeIndex(ctx *gin.Context) {
@@ -263,6 +325,109 @@ func (h *Handler) HandleLogin(ctx *gin.Context) {
 	}
 }
 
+func (h *Handler) LoginAPI(ctx *gin.Context) {
+	var body struct {
+		Email    string `json:"email" binding:"required,email"`
+		Password string `json:"password" binding:"required"`
+		UserType string `json:"user_type" binding:"required,oneof=employee specialist"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Неверные данные для входа")
+		return
+	}
+
+	user, err := h.Repository.GetUserByEmail(body.Email)
+	if err != nil || user == nil || user.Password != body.Password {
+		h.writeJSONError(ctx, http.StatusUnauthorized, "Неверный email или пароль")
+		return
+	}
+	if user.UserType != body.UserType {
+		h.writeJSONError(ctx, http.StatusForbidden, "Неверный тип пользователя")
+		return
+	}
+
+	ctx.SetCookie("user_id", strconv.Itoa(user.ID), 86400, "/", "", false, true)
+	ctx.SetCookie("user_type", user.UserType, 86400, "/", "", false, true)
+	ctx.SetCookie("user_name", user.FullName, 86400, "/", "", false, true)
+	ctx.JSON(http.StatusOK, gin.H{"status": "ok", "user": user})
+}
+
+func (h *Handler) RegisterAPI(ctx *gin.Context) {
+	var body struct {
+		Email    string `json:"email" binding:"required,email"`
+		Password string `json:"password" binding:"required"`
+		FullName string `json:"full_name" binding:"required"`
+		Phone    string `json:"phone" binding:"required"`
+		UserType string `json:"user_type" binding:"required,oneof=employee specialist"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Неверные данные для регистрации")
+		return
+	}
+
+	existingUser, err := h.Repository.GetUserByEmail(body.Email)
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при проверке пользователя")
+		return
+	}
+	if existingUser != nil {
+		h.writeJSONError(ctx, http.StatusConflict, "Пользователь с таким email уже существует")
+		return
+	}
+
+	user := &repository.User{
+		Email:    strings.TrimSpace(body.Email),
+		Password: strings.TrimSpace(body.Password),
+		FullName: strings.TrimSpace(body.FullName),
+		Phone:    strings.TrimSpace(body.Phone),
+		UserType: body.UserType,
+	}
+
+	if err := h.Repository.CreateUser(user); err != nil {
+		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при создании пользователя")
+		return
+	}
+
+	ctx.JSON(http.StatusCreated, gin.H{"status": "ok", "user": user})
+}
+
+func (h *Handler) LogoutAPI(ctx *gin.Context) {
+	ctx.SetCookie("user_id", "", -1, "/", "", false, true)
+	ctx.SetCookie("user_type", "", -1, "/", "", false, true)
+	ctx.SetCookie("user_name", "", -1, "/", "", false, true)
+	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *Handler) CreateRequestAPI(ctx *gin.Context) {
+	user := getAPIUser()
+
+	var body struct {
+		Title        string `json:"title" binding:"required"`
+		Description  string `json:"description" binding:"required"`
+		ThreatTypeID int    `json:"threat_type_id" binding:"required"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Неверные данные для создания заявки")
+		return
+	}
+
+	request := &repository.Request{
+		Title:        strings.TrimSpace(body.Title),
+		Description:  strings.TrimSpace(body.Description),
+		ThreatTypeID: body.ThreatTypeID,
+		CreatorID:    user.ID,
+		Status:       "draft",
+		CreatedAt:    time.Now(),
+	}
+
+	if err := h.Repository.CreateRequest(request); err != nil {
+		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при создании заявки")
+		return
+	}
+
+	ctx.JSON(http.StatusCreated, gin.H{"status": "ok", "request": request})
+}
+
 func (h *Handler) CreateRequest(ctx *gin.Context) {
 	userIDStr, err := ctx.Cookie("user_id")
 	if err != nil {
@@ -488,6 +653,288 @@ func (h *Handler) UpdateRequestStatus(ctx *gin.Context) {
 	logrus.Info("Статус заявки ", requestID, " изменен на ", newStatus, " пользователем типа ", userType)
 
 	ctx.Redirect(http.StatusFound, "/request/"+requestIDStr)
+}
+
+func (h *Handler) GetRequestsAPI(ctx *gin.Context) {
+	status := strings.TrimSpace(ctx.Query("status"))
+	from, err := h.parseDateParam(strings.TrimSpace(ctx.Query("date_from")))
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Неверный формат даты date_from")
+		return
+	}
+	to, err := h.parseDateParam(strings.TrimSpace(ctx.Query("date_to")))
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Неверный формат даты date_to")
+		return
+	}
+
+	requests, err := h.Repository.GetRequests(status, from, to)
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при получении заявок")
+		return
+	}
+
+	for idx := range requests {
+		requests[idx].ResultCount = len(requests[idx].RequestFacts)
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"status": "ok", "requests": requests})
+}
+
+func (h *Handler) GetRequestAPI(ctx *gin.Context) {
+	idStr := ctx.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Неверный ID заявки")
+		return
+	}
+	request, err := h.Repository.GetRequestByID(id)
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при получении заявки")
+		return
+	}
+	if request == nil {
+		h.writeJSONError(ctx, http.StatusNotFound, "Заявка не найдена")
+		return
+	}
+	request.ResultCount = len(request.RequestFacts)
+	ctx.JSON(http.StatusOK, gin.H{"status": "ok", "request": request})
+}
+
+func (h *Handler) UpdateRequestAPI(ctx *gin.Context) {
+	userID, err := h.getCurrentUserID(ctx)
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusUnauthorized, "Требуется вход")
+		return
+	}
+
+	idStr := ctx.Param("id")
+	requestID, err := strconv.Atoi(idStr)
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Неверный ID заявки")
+		return
+	}
+
+	request, err := h.Repository.GetRequestByID(requestID)
+	if err != nil || request == nil {
+		h.writeJSONError(ctx, http.StatusNotFound, "Заявка не найдена")
+		return
+	}
+	if request.CreatorID != userID {
+		h.writeJSONError(ctx, http.StatusForbidden, "Только создатель может изменять заявку")
+		return
+	}
+	if request.Status != "draft" {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Изменение заявки возможно только в статусе draft")
+		return
+	}
+
+	var body struct {
+		Title        string `json:"title"`
+		Description  string `json:"description"`
+		ThreatTypeID int    `json:"threat_type_id"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Неверные данные заявки")
+		return
+	}
+
+	updates := map[string]interface{}{}
+	if strings.TrimSpace(body.Title) != "" {
+		updates["title"] = strings.TrimSpace(body.Title)
+	}
+	if strings.TrimSpace(body.Description) != "" {
+		updates["description"] = strings.TrimSpace(body.Description)
+	}
+	if body.ThreatTypeID > 0 {
+		updates["threat_type_id"] = body.ThreatTypeID
+	}
+	if len(updates) == 0 {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Нет данных для обновления")
+		return
+	}
+
+	if err := h.Repository.UpdateRequest(requestID, updates); err != nil {
+		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при обновлении заявки")
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *Handler) SubmitRequest(ctx *gin.Context) {
+	userID, err := h.getCurrentUserID(ctx)
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusUnauthorized, "Требуется вход")
+		return
+	}
+	userType, err := h.getCurrentUserType(ctx)
+	if err != nil || userType != "specialist" {
+		h.writeJSONError(ctx, http.StatusForbidden, "Только специалист может брать заявку")
+		return
+	}
+
+	idStr := ctx.Param("id")
+	requestID, err := strconv.Atoi(idStr)
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Неверный ID заявки")
+		return
+	}
+
+	request, err := h.Repository.GetRequestByID(requestID)
+	if err != nil || request == nil {
+		h.writeJSONError(ctx, http.StatusNotFound, "Заявка не найдена")
+		return
+	}
+	if request.Status != "awaiting" {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Заявку можно принять только в статусе awaiting")
+		return
+	}
+
+	updates := map[string]interface{}{
+		"status":       "taken",
+		"moderator_id": userID,
+	}
+	if err := h.Repository.UpdateRequest(requestID, updates); err != nil {
+		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при принятии заявки")
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *Handler) CompleteRequest(ctx *gin.Context) {
+	userID, err := h.getCurrentUserID(ctx)
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusUnauthorized, "Требуется вход")
+		return
+	}
+	userType, err := h.getCurrentUserType(ctx)
+	if err != nil || userType != "specialist" {
+		h.writeJSONError(ctx, http.StatusForbidden, "Только специалист может завершать заявку")
+		return
+	}
+
+	idStr := ctx.Param("id")
+	requestID, err := strconv.Atoi(idStr)
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Неверный ID заявки")
+		return
+	}
+
+	var body struct {
+		Status string `json:"status" binding:"required,oneof=closed rejected"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Неверный статус")
+		return
+	}
+
+	request, err := h.Repository.GetRequestByID(requestID)
+	if err != nil || request == nil {
+		h.writeJSONError(ctx, http.StatusNotFound, "Заявка не найдена")
+		return
+	}
+	if request.Status != "taken" {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Завершить можно только сформированную заявку")
+		return
+	}
+
+	if err := h.Repository.CompleteRequest(requestID, userID, body.Status); err != nil {
+		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при завершении заявки")
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *Handler) DeleteRequestAPI(ctx *gin.Context) {
+	userID, err := h.getCurrentUserID(ctx)
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusUnauthorized, "Требуется вход")
+		return
+	}
+	userType, _ := h.getCurrentUserType(ctx)
+
+	idStr := ctx.Param("id")
+	requestID, err := strconv.Atoi(idStr)
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Неверный ID заявки")
+		return
+	}
+
+	request, err := h.Repository.GetRequestByID(requestID)
+	if err != nil || request == nil {
+		h.writeJSONError(ctx, http.StatusNotFound, "Заявка не найдена")
+		return
+	}
+	if userType != "specialist" && request.CreatorID != userID {
+		h.writeJSONError(ctx, http.StatusForbidden, "Нет прав на удаление этой заявки")
+		return
+	}
+
+	if err := h.Repository.DeleteRequest(requestID); err != nil {
+		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при удалении заявки")
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *Handler) GetRequestFactsAPI(ctx *gin.Context) {
+	idStr := ctx.Param("id")
+	requestID, err := strconv.Atoi(idStr)
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Неверный ID заявки")
+		return
+	}
+
+	facts, err := h.Repository.GetFactsByRequestID(requestID)
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при получении фактов заявки")
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"status": "ok", "facts": facts})
+}
+
+func (h *Handler) CreateFactAPI(ctx *gin.Context) {
+	user := getAPIUser()
+	if user.UserType != "employee" {
+		h.writeJSONError(ctx, http.StatusForbidden, "Только сотрудник может добавлять факты")
+		return
+	}
+
+	idStr := ctx.Param("id")
+	requestID, err := strconv.Atoi(idStr)
+	if err != nil {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Неверный ID заявки")
+		return
+	}
+
+	var body struct {
+		Title         string `json:"title" binding:"required"`
+		Description   string `json:"description" binding:"required"`
+		ScreenshotURL string `json:"screenshot_url"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Неверные данные для создания факта")
+		return
+	}
+
+	fact := &repository.Fact{
+		RequestID:     requestID,
+		Title:         strings.TrimSpace(body.Title),
+		Description:   strings.TrimSpace(body.Description),
+		ScreenshotURL: strings.TrimSpace(body.ScreenshotURL),
+	}
+	if fact.Title == "" || fact.Description == "" {
+		h.writeJSONError(ctx, http.StatusBadRequest, "Название и описание факта обязательны")
+		return
+	}
+
+	if err := h.Repository.CreateFact(fact); err != nil {
+		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при создании факта")
+		return
+	}
+
+	ctx.JSON(http.StatusCreated, gin.H{"status": "ok", "fact": fact})
 }
 
 func isValidUTF8(s string) bool {

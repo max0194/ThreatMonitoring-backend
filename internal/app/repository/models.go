@@ -3,7 +3,7 @@ package repository
 import "time"
 
 type User struct {
-	ID        int       `gorm:"primaryKey" json:"id"`
+	ID        int       `gorm:"primaryKey;autoIncrement" json:"id"`
 	Email     string    `gorm:"uniqueIndex" json:"email"`
 	Password  string    `json:"-"`
 	FullName  string    `json:"full_name"`
@@ -14,20 +14,20 @@ type User struct {
 }
 
 type Category struct {
-	ID       int    `gorm:"primaryKey" json:"id"`
+	ID       int    `gorm:"primaryKey;autoIncrement" json:"id"`
 	Name     string `json:"name"`
 	Priority int    `json:"priority"`
 }
 
 type ThreatType struct {
-	ID         int       `gorm:"primaryKey" json:"id"`
+	ID         int       `gorm:"primaryKey;autoIncrement" json:"id"`
 	CategoryID int       `json:"category_id"`
 	Category   *Category `gorm:"foreignKey:CategoryID" json:"category"`
 	Name       string    `json:"name"`
 }
 
 type Request struct {
-	ID           int         `gorm:"primaryKey" json:"id"`
+	ID           int         `gorm:"primaryKey;autoIncrement" json:"id"`
 	CreatorID    int         `json:"creator_id"`
 	Creator      *User       `gorm:"foreignKey:CreatorID" json:"creator"`
 	Title        string      `json:"title"`
@@ -38,10 +38,11 @@ type Request struct {
 	CreatedAt    time.Time   `json:"created_at"`
 	RequestFacts []Fact      `gorm:"foreignKey:RequestID" json:"facts"`
 	UpdatedAt    time.Time   `json:"updated_at"`
+	ResultCount  int         `gorm:"-" json:"result_count,omitempty"`
 }
 
 type Fact struct {
-	ID            int       `gorm:"primaryKey" json:"id"`
+	ID            int       `gorm:"primaryKey;autoIncrement" json:"id"`
 	RequestID     int       `json:"request_id"`
 	Title         string    `json:"title"`
 	Description   string    `json:"description"`

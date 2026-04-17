@@ -61,6 +61,23 @@ func StartServer() {
 		logrus.Info("CSS получен")
 	})
 
+	api := r.Group("/api")
+	{
+		api.POST("/requests", h.CreateRequestAPI)
+		api.GET("/requests", h.GetRequestsAPI)
+		api.GET("/requests/:id", h.GetRequestAPI)
+		api.PUT("/requests/:id", h.UpdateRequestAPI)
+		api.PUT("/requests/:id/submit", h.SubmitRequest)
+		api.PUT("/requests/:id/complete", h.CompleteRequest)
+		api.DELETE("/requests/:id", h.DeleteRequestAPI)
+
+		api.GET("/requests/:id/facts", h.GetRequestFactsAPI)
+		api.POST("/requests/:id/facts", h.CreateFactAPI)
+
+		api.POST("/auth/register", h.RegisterAPI)
+		api.POST("/auth/login", h.LoginAPI)
+		api.POST("/auth/logout", h.LogoutAPI)
+	}
 	r.GET("/login", h.GetLogin)
 	r.POST("/login", h.HandleLogin)
 	r.GET("/logout", h.Logout)

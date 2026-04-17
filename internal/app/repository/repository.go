@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
@@ -27,6 +29,14 @@ func (r *Repository) GetUserByEmail(email string) (*User, error) {
 		return nil, err
 	}
 	return &user, nil
+}
+
+func (r *Repository) CreateUser(user *User) error {
+	if err := r.DB.Create(user).Error; err != nil {
+		logrus.Error("Ошибка при создании пользователя:", err)
+		return err
+	}
+	return nil
 }
 
 func (r *Repository) GetUserByID(id int) (*User, error) {
@@ -71,6 +81,28 @@ func (r *Repository) GetThreatTypeByID(id int) (*ThreatType, error) {
 	return &threatType, nil
 }
 
+func (r *Repository) GetRequests(status string, from, to *time.Time) ([]Request, error) {
+	var requests []Request
+	query := r.DB.Where("status NOT IN ?", []string{"deleted", "draft"}).
+		Preload("Creator").
+		Preload("ThreatType.Category").
+		Preload("RequestFacts")
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if from != nil {
+		query = query.Where("created_at >= ?", *from)
+	}
+	if to != nil {
+		query = query.Where("created_at <= ?", *to)
+	}
+	if err := query.Find(&requests).Error; err != nil {
+		logrus.Error("Ошибка при получении фильтрованных заявок:", err)
+		return nil, err
+	}
+	return requests, nil
+}
+
 func (r *Repository) GetAllRequests() ([]Request, error) {
 	var requests []Request
 	if err := r.DB.Where("status != ?", "deleted").
@@ -113,7 +145,6 @@ func (r *Repository) GetDraftRequestByUserID(userID int) (*Request, error) {
 	if err := r.DB.Where("creator_id = ? AND status = ?", userID, "draft").
 		Preload("Creator").
 		Preload("RequestFacts").
-		Preload("RequestFacts").
 		First(&request).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
@@ -124,8 +155,43 @@ func (r *Repository) GetDraftRequestByUserID(userID int) (*Request, error) {
 	return &request, nil
 }
 
+func (r *Repository) UpdateRequest(requestID int, updates map[string]interface{}) error {
+	if err := r.DB.Model(&Request{}).Where("id = ?", requestID).Updates(updates).Error; err != nil {
+		logrus.Error("Ошибка при обновлении заявки:", err)
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) FormRequest(requestID int, result string, deliveryDate time.Time) error {
+	updates := map[string]interface{}{
+		"status":        "formed",
+		"result":        result,
+		"delivery_date": deliveryDate,
+		"formed_at":     time.Now(),
+	}
+	if err := r.DB.Model(&Request{}).Where("id = ?", requestID).Updates(updates).Error; err != nil {
+		logrus.Error("Ошибка при формировании заявки:", err)
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) CompleteRequest(requestID, moderatorID int, status string) error {
+	updates := map[string]interface{}{
+		"status":       status,
+		"moderator_id": moderatorID,
+		"completed_at": time.Now(),
+	}
+	if err := r.DB.Model(&Request{}).Where("id = ?", requestID).Updates(updates).Error; err != nil {
+		logrus.Error("Ошибка при завершении заявки:", err)
+		return err
+	}
+	return nil
+}
+
 func (r *Repository) DeleteRequest(requestID int) error {
-	if err := r.DB.Model(&Request{}).Where("id = ?", requestID).Update("status", "deleted").Error; err != nil {
+	if err := r.DB.Exec("UPDATE requests SET status = ? WHERE id = ?", "deleted", requestID).Error; err != nil {
 		logrus.Error("Ошибка при удалении заявки:", err)
 		return err
 	}
