@@ -3,6 +3,7 @@ package repository
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/sirupsen/logrus"
 	"gorm.io/driver/postgres"
@@ -37,7 +38,24 @@ func NewDatabase(dsn string) (*Repository, error) {
 
 	log.Println("Миграции успешно выполнены")
 
-	minioClient, err := NewMinIOClient("localhost:9000", "minioadmin", "minioadmin", "screenshots", false)
+	minioEndpoint := os.Getenv("MINIO_ENDPOINT")
+	if minioEndpoint == "" {
+		minioEndpoint = "localhost:9000"
+	}
+	minioAccessKey := os.Getenv("MINIO_ACCESS_KEY")
+	if minioAccessKey == "" {
+		minioAccessKey = "minioadmin"
+	}
+	minioSecretKey := os.Getenv("MINIO_SECRET_KEY")
+	if minioSecretKey == "" {
+		minioSecretKey = "minioadmin"
+	}
+	minioBucket := os.Getenv("MINIO_BUCKET")
+	if minioBucket == "" {
+		minioBucket = "screenshots"
+	}
+
+	minioClient, err := NewMinIOClient(minioEndpoint, minioAccessKey, minioSecretKey, minioBucket, false)
 	if err != nil {
 		logrus.Fatal("Ошибка инициализации MinIO:", err)
 		return nil, err
