@@ -32,3 +32,5 @@ go.work.sum
 # .vscode/
 
 compose/minio-data
+
+Dockerfile

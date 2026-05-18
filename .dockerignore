@@ -1,0 +1,9 @@
+.git
+.gitignore
+Dockerfile
+.dockerignore
+compose
+.golangci.yml
+.golangci.bck.yml
+.pre-commit-config.yaml
+scripts

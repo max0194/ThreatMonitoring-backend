@@ -11,6 +11,7 @@ import (
 	"threat-monitoring/internal/app/repository"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"github.com/sirupsen/logrus"
@@ -26,7 +27,7 @@ func StartServer() {
 
 	logLevel := os.Getenv("LOG_LEVEL")
 	if logLevel == "" {
-		logLevel = "info"
+		logLevel = "trace"
 	}
 	level, err := logrus.ParseLevel(strings.ToLower(logLevel))
 	if err != nil {
@@ -107,10 +108,16 @@ func StartServer() {
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
 
-	r.LoadHTMLGlob("../frontend/templates/*")
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "http://localhost:9090", "http://localhost:9000", "http://localhost:9001", "http://localhost:5433", "http://localhost:6379"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowCredentials: true,
+	}))
 
 	r.Use(pkg.PrometheusMiddleware())
 
+	r.GET("/", h.ReturnOK)
 	r.GET("/metrics", pkg.MetricsHandler())
 
 	api := r.Group("/api")
@@ -122,6 +129,7 @@ func StartServer() {
 		apiAuth.Use(h.AuthMiddleware())
 		{
 			apiAuth.POST("/auth/register", h.RegisterAPI)
+			apiAuth.GET("/auth/profile", h.ProfileAPI)
 			apiAuth.GET("/requests", h.GetRequestsAPI)
 			apiAuth.GET("/requests/:id", h.GetRequestAPI)
 			apiAuth.POST("/requests", h.CreateRequestAPI)
@@ -135,42 +143,15 @@ func StartServer() {
 		}
 	}
 
-	r.GET("/static/styles/style.css", func(c *gin.Context) {
-		logrus.Info("Запрос CSS")
-		c.Header("Content-Type", "text/css")
-		c.File("../frontend/resources/styles/style.css")
-		logrus.Info("CSS получен")
-	})
-
-	r.GET("/login", h.GetLogin)
-	r.POST("/login", h.HandleLogin)
-	r.GET("/logout", h.Logout)
-	r.GET("/signup", h.RegisterWeb)
-	r.POST("/register", h.RegisterWeb)
-
-	userAuth := r.Group("")
-	userAuth.Use(h.AuthMiddleware())
-	{
-		userAuth.GET("/employee", h.GetEmployeeIndex)
-		userAuth.GET("/employee/requests", h.GetEmployeeRequests)
-		userAuth.POST("/create-request", h.CreateRequest)
-		userAuth.POST("/create-fact", h.CreateFact)
-		userAuth.GET("/specialist", h.GetSpecialistIndex)
-		userAuth.GET("/request/:id", h.GetRequest)
-		userAuth.GET("/threat/:id", h.GetThreat)
-		userAuth.POST("/request/:id/delete", h.DeleteRequest)
-		userAuth.POST("/request/:id/update-status", h.UpdateRequestStatus)
-	}
-
 	r.GET("/swagger", func(c *gin.Context) {
-		c.File("../frontend/templates/swagger.html")
+		c.File("./docs/swagger.html")
 	})
 
 	r.GET("/swagger/swagger.json", func(c *gin.Context) {
 		c.Data(http.StatusOK, "application/json", swaggerJSON)
 	})
 
-	if err := r.Run(":8080"); err != nil { // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
+	if err := r.Run(":8080"); err != nil {
 		logrus.Fatal("Ошибка при запуске сервера:", err)
 	}
 	logrus.Info("Server down")

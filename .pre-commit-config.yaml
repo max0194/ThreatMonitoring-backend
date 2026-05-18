@@ -34,4 +34,4 @@ repos:
         entry: python ./scripts/check_filenames.py
         language: system
         files: '.*'
-        exclude: '^compose/minio-data/'
+        exclude: '^compose/minio-data/|^Dockerfile$'

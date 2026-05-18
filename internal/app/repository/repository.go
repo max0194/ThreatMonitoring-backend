@@ -83,7 +83,7 @@ func (r *Repository) GetThreatTypeByID(id int) (*ThreatType, error) {
 
 func (r *Repository) GetRequests(status string, from, to *time.Time) ([]Request, error) {
 	var requests []Request
-	query := r.DB.Where("status NOT IN ?", []string{"deleted", "draft"}).
+	query := r.DB.Where("status != ?", "deleted").
 		Preload("Creator").
 		Preload("ThreatType.Category").
 		Preload("RequestFacts")

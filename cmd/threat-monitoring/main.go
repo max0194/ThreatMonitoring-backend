@@ -1,8 +1,9 @@
 package main
 
 import (
-	"log"
 	"threat-monitoring/internal/api"
+
+	"github.com/sirupsen/logrus"
 )
 
 // @title Threat Monitoring
@@ -23,7 +24,12 @@ import (
 // @name Authorization
 
 func main() {
-	log.Println("Application start!")
+	logrus.SetLevel(logrus.InfoLevel)
+	logrus.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp: true,
+	})
+
+	logrus.Info("Application start!")
 	api.StartServer()
-	log.Println("Application terminated!")
+	logrus.Info("Application terminated!")
 }
