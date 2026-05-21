@@ -109,7 +109,7 @@ func StartServer() {
 	r.Use(gin.Logger())
 
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "http://localhost:9090", "http://localhost:9000", "http://localhost:9001", "http://localhost:5433", "http://localhost:6379"},
+		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "http://localhost:9090"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,

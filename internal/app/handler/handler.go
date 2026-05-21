@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -418,6 +420,30 @@ func (h *Handler) GetRequestsAPI(ctx *gin.Context) {
 	}
 	logrus.Tracef("GetRequestsAPI: фильтрация status=%q from=%v to=%v", status, from, to)
 
+	key := fmt.Sprintf(
+		"requests:%s:%d",
+		userType,
+		userID,
+	)
+
+	cached, err := h.RedisClient.Get(ctx, key).Result()
+	if err == nil {
+		logrus.Debug("GetRequestsAPI: cache hit")
+
+		var requests []repository.Request
+		if err := json.Unmarshal([]byte(cached), &requests); err == nil {
+
+			ctx.JSON(http.StatusOK, gin.H{
+				"status":   "ok",
+				"count":    len(requests),
+				"requests": requests,
+			})
+			return
+		}
+	} else {
+		logrus.Debugf("GetRequestsAPI: cache miss для key=%s", key)
+	}
+
 	requests, err := h.Repository.GetRequests(status, from, to)
 	if err != nil {
 		logrus.Error("GetRequestsAPI: ошибка при получении заявок", err)
@@ -447,6 +473,20 @@ func (h *Handler) GetRequestsAPI(ctx *gin.Context) {
 
 	for idx := range requests {
 		requests[idx].ResultCount = len(requests[idx].RequestFacts)
+	}
+
+	data, err := json.Marshal(requests)
+	if err == nil {
+		err = h.RedisClient.Set(
+			ctx,
+			key,
+			data,
+			120*time.Second,
+		).Err()
+
+		if err != nil {
+			logrus.Warn("GetRequestsAPI: ошибка при установке кэша", err)
+		}
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
@@ -493,6 +533,31 @@ func (h *Handler) GetRequestAPI(ctx *gin.Context) {
 		return
 	}
 
+	key := fmt.Sprintf(
+		"request:%d:%s:%d",
+		request_id,
+		userType,
+		userID,
+	)
+
+	cached, err := h.RedisClient.Get(ctx, key).Result()
+	if err == nil {
+		logrus.Debug("GetRequestAPI: cache hit")
+
+		var request repository.Request
+		if err := json.Unmarshal([]byte(cached), &request); err == nil {
+
+			ctx.JSON(http.StatusOK, gin.H{
+				"status":  "ok",
+				"count":   1,
+				"request": request,
+			})
+			return
+		}
+	} else {
+		logrus.Debugf("GetRequestAPI: cache miss для key=%s", key)
+	}
+
 	request, err := h.Repository.GetRequestByID(request_id)
 	if err != nil {
 		logrus.Error("GetRequestAPI: ошибка получения заявки ", err)
@@ -512,6 +577,21 @@ func (h *Handler) GetRequestAPI(ctx *gin.Context) {
 	}
 
 	request.ResultCount = len(request.RequestFacts)
+
+	data, err := json.Marshal(request)
+	if err == nil {
+		err = h.RedisClient.Set(
+			ctx,
+			key,
+			data,
+			120*time.Second,
+		).Err()
+
+		if err != nil {
+			logrus.Warn("GetRequestAPI: ошибка при установке кэша", err)
+		}
+	}
+
 	ctx.JSON(http.StatusOK, gin.H{"status": "ok", "request": request})
 }
 
@@ -537,6 +617,13 @@ func (h *Handler) UpdateRequestAPI(ctx *gin.Context) {
 		return
 	}
 
+	userType, err := h.getCurrentUserType(ctx)
+	if err != nil || userType != "employee" {
+		logrus.Warn("SubmitRequestAPI: только специалист может брать заявку: ", userType)
+		h.writeJSONError(ctx, http.StatusForbidden, "Только специалист может брать заявку")
+		return
+	}
+
 	idStr := ctx.Param("id")
 	requestID, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -544,6 +631,19 @@ func (h *Handler) UpdateRequestAPI(ctx *gin.Context) {
 		h.writeJSONError(ctx, http.StatusBadRequest, "Неверный ID заявки")
 		return
 	}
+
+	key := fmt.Sprintf(
+		"request:%d:%s:%d",
+		requestID,
+		userType,
+		userID,
+	)
+
+	keys := fmt.Sprintf(
+		"requests:%s:%d",
+		userType,
+		userID,
+	)
 
 	request, err := h.Repository.GetRequestByID(requestID)
 	if err != nil || request == nil {
@@ -593,6 +693,20 @@ func (h *Handler) UpdateRequestAPI(ctx *gin.Context) {
 		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при обновлении заявки")
 		return
 	}
+
+	delkey, err := h.RedisClient.Del(ctx, key).Result()
+	if err != nil {
+		logrus.Error("ошибка удаления кэша:", err)
+	} else {
+		logrus.Infof("удалено ключей: %d", delkey)
+	}
+	delkeys, err := h.RedisClient.Del(ctx, keys).Result()
+	if err != nil {
+		logrus.Error("ошибка удаления кэша:", err)
+	} else {
+		logrus.Infof("удалено ключей: %d", delkeys)
+	}
+
 	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -632,6 +746,19 @@ func (h *Handler) SubmitRequest(ctx *gin.Context) {
 		return
 	}
 
+	key := fmt.Sprintf(
+		"request:%d:%s:%d",
+		requestID,
+		userType,
+		userID,
+	)
+
+	keys := fmt.Sprintf(
+		"requests:%s:%d",
+		userType,
+		userID,
+	)
+
 	request, err := h.Repository.GetRequestByID(requestID)
 	if err != nil || request == nil {
 		logrus.Warn("SubmitRequestAPI: заявка не найдена: ", request)
@@ -649,10 +776,24 @@ func (h *Handler) SubmitRequest(ctx *gin.Context) {
 		"moderator_id": userID,
 	}
 	if err := h.Repository.UpdateRequest(requestID, updates); err != nil {
-		logrus.Warn("SubmitRequestAPI: неверные данные заявки ")
+		logrus.Error("SubmitRequestAPI: ошибка при принятии заявки")
 		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при принятии заявки")
 		return
 	}
+
+	delkey, err := h.RedisClient.Del(ctx, key).Result()
+	if err != nil {
+		logrus.Error("ошибка удаления кэша:", err)
+	} else {
+		logrus.Infof("удалено ключей: %d", delkey)
+	}
+	delkeys, err := h.RedisClient.Del(ctx, keys).Result()
+	if err != nil {
+		logrus.Error("ошибка удаления кэша:", err)
+	} else {
+		logrus.Infof("удалено ключей: %d", delkeys)
+	}
+
 	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -691,6 +832,20 @@ func (h *Handler) CompleteRequest(ctx *gin.Context) {
 		h.writeJSONError(ctx, http.StatusBadRequest, "Неверный ID заявки")
 		return
 	}
+
+	key := fmt.Sprintf(
+		"request:%d:%s:%d",
+		requestID,
+		userType,
+		userID,
+	)
+
+	keys := fmt.Sprintf(
+		"requests:%s:%d",
+		userType,
+		userID,
+	)
+
 	request, err := h.Repository.GetRequestByID(requestID)
 	if err != nil || request == nil {
 		logrus.Warn("CompleteRequest: заявка не найдена: ", request)
@@ -708,6 +863,20 @@ func (h *Handler) CompleteRequest(ctx *gin.Context) {
 		h.writeJSONError(ctx, http.StatusBadRequest, "Ошибка завершения заявки")
 		return
 	}
+
+	delkey, err := h.RedisClient.Del(ctx, key).Result()
+	if err != nil {
+		logrus.Error("ошибка удаления кэша:", err)
+	} else {
+		logrus.Infof("удалено ключей: %d", delkey)
+	}
+	delkeys, err := h.RedisClient.Del(ctx, keys).Result()
+	if err != nil {
+		logrus.Error("ошибка удаления кэша:", err)
+	} else {
+		logrus.Infof("удалено ключей: %d", delkeys)
+	}
+
 	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -742,6 +911,19 @@ func (h *Handler) DeleteRequestAPI(ctx *gin.Context) {
 		return
 	}
 
+	key := fmt.Sprintf(
+		"request:%d:%s:%d",
+		requestID,
+		userType,
+		userID,
+	)
+
+	keys := fmt.Sprintf(
+		"requests:%s:%d",
+		userType,
+		userID,
+	)
+
 	request, err := h.Repository.GetRequestByID(requestID)
 	if err != nil || request == nil {
 		logrus.Warn("DeleteRequestAPI: заявка не найдена: ", request)
@@ -759,6 +941,20 @@ func (h *Handler) DeleteRequestAPI(ctx *gin.Context) {
 		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при удалении заявки")
 		return
 	}
+
+	delkey, err := h.RedisClient.Del(ctx, key).Result()
+	if err != nil {
+		logrus.Error("ошибка удаления кэша:", err)
+	} else {
+		logrus.Infof("удалено ключей: %d", delkey)
+	}
+	delkeys, err := h.RedisClient.Del(ctx, keys).Result()
+	if err != nil {
+		logrus.Error("ошибка удаления кэша:", err)
+	} else {
+		logrus.Infof("удалено ключей: %d", delkeys)
+	}
+
 	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -798,6 +994,31 @@ func (h *Handler) GetRequestFactsAPI(ctx *gin.Context) {
 		return
 	}
 
+	key := fmt.Sprintf(
+		"requestfacts:%s:%s:%d",
+		idStr,
+		userType,
+		userID,
+	)
+
+	cached, err := h.RedisClient.Get(ctx, key).Result()
+	if err == nil {
+		logrus.Debug("GetRequestFactsAPI: cache hit")
+
+		var requests []repository.Request
+		if err := json.Unmarshal([]byte(cached), &requests); err == nil {
+
+			ctx.JSON(http.StatusOK, gin.H{
+				"status":   "ok",
+				"count":    len(requests),
+				"requests": requests,
+			})
+			return
+		}
+	} else {
+		logrus.Debugf("GetRequestFactsAPI: cache miss для key=%s", key)
+	}
+
 	request, err := h.Repository.GetRequestByID(requestID)
 	if err != nil {
 		logrus.Error("GetRequestFactsAPI: ошибка получения заявки ", err)
@@ -821,6 +1042,21 @@ func (h *Handler) GetRequestFactsAPI(ctx *gin.Context) {
 		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при получении фактов заявки")
 		return
 	}
+
+	data, err := json.Marshal(request)
+	if err == nil {
+		err = h.RedisClient.Set(
+			ctx,
+			key,
+			data,
+			120*time.Second,
+		).Err()
+
+		if err != nil {
+			logrus.Warn("GetRequestFactsAPI: ошибка при установке кэша", err)
+		}
+	}
+
 	ctx.JSON(http.StatusOK, gin.H{"status": "ok", "facts": facts})
 }
 
@@ -862,6 +1098,19 @@ func (h *Handler) CreateFactAPI(ctx *gin.Context) {
 		h.writeJSONError(ctx, http.StatusBadRequest, "Неверный ID заявки")
 		return
 	}
+
+	key := fmt.Sprintf(
+		"request:%d:%s:%d",
+		requestID,
+		userType,
+		userID,
+	)
+
+	keys := fmt.Sprintf(
+		"requests:%s:%d",
+		userType,
+		userID,
+	)
 
 	request, err := h.Repository.GetRequestByID(requestID)
 	if err != nil || request == nil {
@@ -922,6 +1171,19 @@ func (h *Handler) CreateFactAPI(ctx *gin.Context) {
 		logrus.Error("CreateFactAPI: ошибка при создании факта:", err)
 		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при создании факта")
 		return
+	}
+
+	delkey, err := h.RedisClient.Del(ctx, key).Result()
+	if err != nil {
+		logrus.Error("ошибка удаления кэша:", err)
+	} else {
+		logrus.Infof("удалено ключей: %d", delkey)
+	}
+	delkeys, err := h.RedisClient.Del(ctx, keys).Result()
+	if err != nil {
+		logrus.Error("ошибка удаления кэша:", err)
+	} else {
+		logrus.Infof("удалено ключей: %d", delkeys)
 	}
 
 	ctx.JSON(http.StatusCreated, gin.H{"status": "ok", "fact": fact})
