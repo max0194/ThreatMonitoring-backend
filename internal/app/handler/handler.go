@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"threat-monitoring/internal/app/ds"
@@ -39,6 +40,11 @@ func NewHandler(r *repository.Repository, redisClient *redis.Client, jwtSecret [
 
 func (h *Handler) ReturnOK(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func validatePhone(phone string) bool {
+	re := regexp.MustCompile(`^\+7\d{10}$`)
+	return re.MatchString(phone)
 }
 
 func (h *Handler) getCurrentUserType(ctx *gin.Context) (string, error) {
@@ -245,7 +251,7 @@ func (h *Handler) RegisterAPI(ctx *gin.Context) {
 		logrus.Warnf("RegisterAPI: ошибка домена (не @company.com) %v", err)
 		h.writeJSONError(ctx, http.StatusBadRequest, "Разрешены только корпоративные email с доменом @company.com")
 		return
-	} else if !strings.HasPrefix(body.Phone, "+7") || len(body.Phone) != 12 {
+	} else if !validatePhone(body.Phone) {
 		logrus.Warnf("RegisterAPI: ошибка формата телефона %v", err)
 		h.writeJSONError(ctx, http.StatusBadRequest, "Неверный формат телефона")
 		return
