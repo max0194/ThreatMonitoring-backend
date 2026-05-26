@@ -24,17 +24,14 @@ func TokenFromRequest(ctx *gin.Context) string {
 
 	if strings.HasPrefix(authHeader, "Bearer ") {
 		token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
-		logrus.Debug("Извлечённый токен (Bearer): ", token)
 		return token
 	}
 
 	if authHeader != "" {
-		logrus.Debug("Извлечённый токен (без Bearer): ", authHeader)
 		return authHeader
 	}
 
 	if token, err := ctx.Cookie(AccessTokenCookie); err == nil {
-		logrus.Debug("Токен из куки: ", token)
 		return token
 	}
 
