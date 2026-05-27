@@ -1,0 +1,80 @@
+stages:
+  - lint
+  - unit
+  - integration
+  - scenarios
+
+image: golang:1.25.7-alpine
+
+services:
+  - name: postgres:16-alpine
+    alias: postgres
+
+  - name: redis:7-alpine
+    alias: redis
+
+variables:
+  GO111MODULE: "on"
+
+  GOPATH: "${CI_PROJECT_DIR}/.go"
+
+  GOMODCACHE: "${CI_PROJECT_DIR}/.go/pkg/mod"
+
+  GOCACHE: "${CI_PROJECT_DIR}/.cache/go-build"
+
+  DB_HOST: postgres
+  DB_PORT: 5432
+  DB_NAME: threat_monitoring_test
+  DB_USER: postgres
+  DB_PASSWORD: postgres
+
+  POSTGRES_DB: threat_monitoring_test
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
+
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+
+  JWT_SECRET: test-secret
+
+cache:
+  key:
+    files:
+      - go.sum
+
+  paths:
+    - .go/pkg/mod
+    - .cache/go-build
+
+  policy: pull-push
+
+before_script:
+  - go version
+  - mkdir -p .go/pkg/mod
+  - mkdir -p .cache/go-build
+  - go mod download
+
+lint:
+  stage: lint
+
+  script:
+    - go vet ./...
+
+unit-tests:
+  stage: unit
+
+  script:
+    - go test ./tests/unit/... -v -count=1
+
+
+integration-tests:
+  stage: integration
+
+  script:
+    - go test ./tests/integration/... -v -count=1
+
+scenario-tests:
+  stage: scenarios
+
+  script:
+    - go test ./tests/scenarios/... -v -count=1

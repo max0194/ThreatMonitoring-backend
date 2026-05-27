@@ -30,6 +30,8 @@ type Request struct {
 	ID           int         `gorm:"primaryKey;autoIncrement" json:"id"`
 	CreatorID    int         `json:"creator_id"`
 	Creator      *User       `gorm:"foreignKey:CreatorID" json:"creator"`
+	ModeratorID  *int        `json:"moderator_id"`
+	Moderator    *User       `gorm:"foreignKey:ModeratorID" json:"moderator"`
 	Title        string      `json:"title"`
 	Description  string      `json:"description"`
 	ThreatTypeID int         `json:"threat_type_id"`
@@ -39,6 +41,7 @@ type Request struct {
 	RequestFacts []Fact      `gorm:"foreignKey:RequestID" json:"facts"`
 	UpdatedAt    time.Time   `json:"updated_at"`
 	ResultCount  int         `gorm:"-" json:"result_count,omitempty"`
+	CompletedAt  *time.Time  `json:"completed_at"`
 }
 
 type Fact struct {

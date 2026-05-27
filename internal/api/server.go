@@ -109,7 +109,7 @@ func StartServer() {
 	r.Use(gin.Logger())
 
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "http://localhost:9090"},
+		AllowOrigins:     []string{"https://api.threatmonitoring.ru", "https://max0194.github.io"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
@@ -117,11 +117,11 @@ func StartServer() {
 
 	r.Use(pkg.PrometheusMiddleware())
 
-	r.GET("/", h.ReturnOK)
 	r.GET("/metrics", pkg.MetricsHandler())
 
 	api := r.Group("/api")
 	{
+		api.GET("/health", h.ReturnOK)
 		api.POST("/auth/login", h.LoginAPI)
 		api.POST("/auth/logout", h.LogoutAPI)
 
