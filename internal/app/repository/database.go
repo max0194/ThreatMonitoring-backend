@@ -22,7 +22,6 @@ func NewDatabase(dsn string) (*Repository, error) {
 	}
 
 	log.Println("Подключение к PostgreSQL успешно")
-
 	err = db.AutoMigrate(
 		&User{},
 		&Category{},

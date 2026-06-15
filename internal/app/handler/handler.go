@@ -90,16 +90,42 @@ func (h *Handler) AuthMiddleware() gin.HandlerFunc {
 }
 
 func (h *Handler) writeSessionCookies(ctx *gin.Context, token string) {
-	ctx.SetCookie(accessTokenCookie, token, int(h.jwtTTL.Seconds()), "/", "", false, true)
+	http.SetCookie(ctx.Writer, &http.Cookie{
+		Name:   accessTokenCookie,
+		Value:  token,
+		Path:   "/",
+		MaxAge: int(h.jwtTTL.Seconds()),
+
+		HttpOnly: true,
+		Secure:   true,
+
+		SameSite: http.SameSiteNoneMode,
+	})
 }
 
 func (h *Handler) clearSessionCookies(ctx *gin.Context) {
-	ctx.SetCookie(accessTokenCookie, "", -1, "/", "", false, true)
-	ctx.SetCookie("user_id", "", -1, "/", "", false, true)
-	ctx.SetCookie("user_type", "", -1, "/", "", false, true)
-	ctx.SetCookie("user_name", "", -1, "/", "", false, true)
-}
 
+	cookies := []string{
+		accessTokenCookie,
+		"user_id",
+		"user_type",
+		"user_name",
+	}
+
+	for _, name := range cookies {
+		http.SetCookie(ctx.Writer, &http.Cookie{
+			Name:   name,
+			Value:  "",
+			Path:   "/",
+			MaxAge: -1,
+
+			HttpOnly: true,
+			Secure:   true,
+
+			SameSite: http.SameSiteNoneMode,
+		})
+	}
+}
 func (h *Handler) writeJSONError(ctx *gin.Context, status int, message string) {
 	ctx.JSON(status, gin.H{"status": "error", "message": message})
 }
@@ -115,39 +141,6 @@ func (h *Handler) parseDateParam(value string) (*time.Time, bool, error) {
 		return nil, false, nil
 	}
 	return &t, true, nil
-}
-
-// ProfileAPI godoc
-// @Summary Получить профиль текущего пользователя
-// @Description Возвращает информацию о текущем пользователе на основе авторизованной сессии.
-// @Tags auth
-// @Accept json
-// @Produce json
-// @Security ApiKeyAuth
-// @Success 200 {object} map[string]interface{}
-// @Failure 401 {object} map[string]interface{}
-// @Router /api/auth/profile [get]
-func (h *Handler) ProfileAPI(ctx *gin.Context) {
-	userID, err := h.getCurrentUserID(ctx)
-	if err != nil {
-		logrus.Warn("ProfileAPI: требуется вход")
-		h.writeJSONError(ctx, http.StatusUnauthorized, "Требуется вход")
-		return
-	}
-
-	user, err := h.Repository.GetUserByID(userID)
-	if err != nil {
-		logrus.Error("ProfileAPI: ошибка при получении пользователя", err)
-		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при получении профиля")
-		return
-	}
-	if user == nil {
-		logrus.Warnf("ProfileAPI: пользователь не найден user_id=%d", userID)
-		h.writeJSONError(ctx, http.StatusUnauthorized, "Пользователь не найден")
-		return
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok", "user": user})
 }
 
 // LoginAPI godoc
@@ -195,9 +188,36 @@ func (h *Handler) LoginAPI(ctx *gin.Context) {
 		return
 	}
 
-	ctx.SetCookie("user_id", strconv.Itoa(user.ID), int(h.jwtTTL.Seconds()), "/", "", false, true)
-	ctx.SetCookie("user_type", user.UserType, int(h.jwtTTL.Seconds()), "/", "", false, true)
-	ctx.SetCookie("user_name", user.FullName, int(h.jwtTTL.Seconds()), "/", "", false, true)
+	http.SetCookie(ctx.Writer, &http.Cookie{
+		Name:   "user_id",
+		Value:  strconv.Itoa(user.ID),
+		Path:   "/",
+		MaxAge: int(h.jwtTTL.Seconds()),
+
+		HttpOnly: true,
+		Secure:   true,
+
+		SameSite: http.SameSiteNoneMode,
+	})
+	http.SetCookie(ctx.Writer, &http.Cookie{
+		Name:     "user_type",
+		Value:    user.UserType,
+		Path:     "/",
+		MaxAge:   int(h.jwtTTL.Seconds()),
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteNoneMode,
+	})
+
+	http.SetCookie(ctx.Writer, &http.Cookie{
+		Name:     "user_name",
+		Value:    user.FullName,
+		Path:     "/",
+		MaxAge:   int(h.jwtTTL.Seconds()),
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteNoneMode,
+	})
 	h.writeSessionCookies(ctx, token)
 	logrus.WithFields(logrus.Fields{"user_id": user.ID, "email": user.Email, "user_type": user.UserType}).Info("LoginAPI: пользователь авторизовался")
 	ctx.JSON(http.StatusOK, gin.H{"status": "ok", "token": token, "user": user})
@@ -350,7 +370,18 @@ func (h *Handler) CreateRequestAPI(ctx *gin.Context) {
 		h.writeJSONError(ctx, http.StatusUnauthorized, "Требуется вход")
 		return
 	}
+	userType, err := h.getCurrentUserType(ctx)
+	if err != nil {
+		logrus.Warn("CreateRequestAPI: требуется вход")
+		h.writeJSONError(ctx, http.StatusUnauthorized, "Требуется вход")
+		return
+	}
 
+	keys := fmt.Sprintf(
+		"requests:%s:%d",
+		userType,
+		userID,
+	)
 	var body struct {
 		Title        string `json:"title" binding:"required"`
 		Description  string `json:"description" binding:"required"`
@@ -375,6 +406,13 @@ func (h *Handler) CreateRequestAPI(ctx *gin.Context) {
 		logrus.Error("CreateRequestAPI: ошибка создания заявки")
 		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при создании заявки")
 		return
+	}
+
+	delkeys, err := h.RedisClient.Del(ctx, keys).Result()
+	if err != nil {
+		logrus.Error("ошибка удаления кэша:", err)
+	} else {
+		logrus.Infof("удалено ключей: %d", delkeys)
 	}
 
 	ctx.JSON(http.StatusCreated, gin.H{"status": "ok", "request": request})

@@ -58,7 +58,7 @@ services:
     image: threat-monitoring-backend:v1.0
     container_name: threat-monitoring-backend
     ports:
-      - "8080:8080"
+      - "8085:8080"
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
@@ -84,7 +84,7 @@ services:
     image: threat-monitoring-frontend:v1.0
     container_name: threat-monitoring-frontend
     ports:
-      - "3000:80"
+      - "3005:80"
     depends_on:
       - backend
     restart: unless-stopped
