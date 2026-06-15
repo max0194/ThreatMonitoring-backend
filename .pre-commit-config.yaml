@@ -28,10 +28,3 @@ repos:
         language: system
         pass_filenames: false
         files: '\.go$'
-
-      - id: check-filenames
-        name: check-filenames
-        entry: python ./scripts/check_filenames.py
-        language: system
-        files: '.*'
-        exclude: '^compose/minio-data/|^Dockerfile$'

@@ -86,7 +86,7 @@ func (m *MinIOClient) UploadFile(ctx context.Context, file multipart.File, heade
 		return "", fmt.Errorf("failed to upload file: %w", err)
 	}
 
-	url := fmt.Sprintf("http://localhost:9000/%s/%s", m.Bucket, objectName)
+	url := fmt.Sprintf("https://minio.threatmonitoring.ru/%s/%s", m.Bucket, objectName)
 	return url, nil
 }
 

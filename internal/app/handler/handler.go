@@ -143,39 +143,6 @@ func (h *Handler) parseDateParam(value string) (*time.Time, bool, error) {
 	return &t, true, nil
 }
 
-// ProfileAPI godoc
-// @Summary Получить профиль текущего пользователя
-// @Description Возвращает информацию о текущем пользователе на основе авторизованной сессии.
-// @Tags auth
-// @Accept json
-// @Produce json
-// @Security ApiKeyAuth
-// @Success 200 {object} map[string]interface{}
-// @Failure 401 {object} map[string]interface{}
-// @Router /api/auth/profile [get]
-func (h *Handler) ProfileAPI(ctx *gin.Context) {
-	userID, err := h.getCurrentUserID(ctx)
-	if err != nil {
-		logrus.Warn("ProfileAPI: требуется вход")
-		h.writeJSONError(ctx, http.StatusUnauthorized, "Требуется вход")
-		return
-	}
-
-	user, err := h.Repository.GetUserByID(userID)
-	if err != nil {
-		logrus.Error("ProfileAPI: ошибка при получении пользователя", err)
-		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при получении профиля")
-		return
-	}
-	if user == nil {
-		logrus.Warnf("ProfileAPI: пользователь не найден user_id=%d", userID)
-		h.writeJSONError(ctx, http.StatusUnauthorized, "Пользователь не найден")
-		return
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok", "user": user})
-}
-
 // LoginAPI godoc
 // @Summary Зайти за пользователя
 // @Description Позволяет зайти за пользователя, используя его данные.
@@ -403,7 +370,18 @@ func (h *Handler) CreateRequestAPI(ctx *gin.Context) {
 		h.writeJSONError(ctx, http.StatusUnauthorized, "Требуется вход")
 		return
 	}
+	userType, err := h.getCurrentUserType(ctx)
+	if err != nil {
+		logrus.Warn("CreateRequestAPI: требуется вход")
+		h.writeJSONError(ctx, http.StatusUnauthorized, "Требуется вход")
+		return
+	}
 
+	keys := fmt.Sprintf(
+		"requests:%s:%d",
+		userType,
+		userID,
+	)
 	var body struct {
 		Title        string `json:"title" binding:"required"`
 		Description  string `json:"description" binding:"required"`
@@ -428,6 +406,13 @@ func (h *Handler) CreateRequestAPI(ctx *gin.Context) {
 		logrus.Error("CreateRequestAPI: ошибка создания заявки")
 		h.writeJSONError(ctx, http.StatusInternalServerError, "Ошибка при создании заявки")
 		return
+	}
+
+	delkeys, err := h.RedisClient.Del(ctx, keys).Result()
+	if err != nil {
+		logrus.Error("ошибка удаления кэша:", err)
+	} else {
+		logrus.Infof("удалено ключей: %d", delkeys)
 	}
 
 	ctx.JSON(http.StatusCreated, gin.H{"status": "ok", "request": request})
