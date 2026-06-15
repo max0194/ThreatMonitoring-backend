@@ -18,19 +18,17 @@
 
 1. Клонирование репозиториев:
 ```bash
-git clone https://github.com/max0194/threat-monitoring-backend.git
-git clone https://github.com/max0194/threat-monitoring-frontend-.git
+git clone https://github.com/max0194/ThreatMonitoring-backend.git
+git clone https://github.com/max0194/ThreatMonitoring-frontend.git
 ```
-
-2. Запуск контейнеров:
+2. Запустите контейнеры через Docker Compose:
 ```bash
-cd backend/compose
+cd compose
 docker compose up -d
 ```
-
-3. Запуск бэкенд-приложения:
+3. Запустите backend-приложение:
 ```bash
-cd ../
+cd ..
 go run ./cmd/threat-monitoring/main.go
 ```
 
@@ -80,6 +78,3 @@ go run ./cmd/threat-monitoring/main.go
 * Пользователь: `postgres`
 * Пароль: `postgres`
 * База данных: `threat-monitoring`
-
-## Контактная информация
-Для вопросов и предложений обращайтесь к разработчику.
