@@ -1,90 +1,76 @@
-# Система мониторинга ИТ-угроз
+# ThreatMonitoring Backend
 
-## Описание проекта
-Веб-приложение для сбора и обработки информации об ИТ-угрозах в корпоративной среде. Позволяет сотрудникам сообщать о случаях возникновения угроз с прикреплением подтверждающих материалов.
-
-## Содержание
-* [Требования](#требования)
-* [Установка](#установка)
-* [Структура проекта](#структура-проекта)
-* [Используемые технологии](#используемые-технологии)
-* [Документация](#документация)
+## О проекте
+Это backend-сервис для системы мониторинга ИТ-угроз. Приложение принимает запросы, сохраняет данные об угрозах и работает с базой данных PostgreSQL и объектным хранилищем MinIO.
 
 ## Требования
 * Docker Compose
-* Go (версия 1.20+)
+* Go 1.20 или новее
 
-## Установка
-
-1. Клонирование репозиториев:
+## Быстрый запуск с контейнерами
+1. Перейдите в папку backend:
 ```bash
-git clone https://github.com/max0194/threat-monitoring-backend.git
-git clone https://github.com/max0194/threat-monitoring-frontend-.git
+cd backend
 ```
-
-2. Запуск контейнеров:
+2. Запустите контейнеры через Docker Compose:
 ```bash
-cd backend/compose
+cd compose
 docker compose up -d
 ```
-
-3. Запуск бэкенд-приложения:
+3. Запустите backend-приложение:
 ```bash
-cd ../
+cd ..
 go run ./cmd/threat-monitoring/main.go
 ```
 
-4. Доступ к системе:
-* Основной интерфейс: `http://localhost:8080`
-* Adminer (админка БД): `http://localhost:8084`
+Если контейнеры успешно запустились (статус started в `docker compose ps`), то сам сервис будет доступен по адресу:
+* `http://localhost:8085`
+
+Веб-интерфейс доступен по адресу:
+* `http://localhost:3005`
+
+Админка для базы данных доступна по адресу:
+* `http://localhost:8084`
+
+## Проверка окружения
+Перед запуском убедитесь, что:
+* установлен Docker и Docker Compose
+* установлен Go версии 1.20 или выше
+* порт `8080` свободен
+* порт `8084` свободен
 
 ## Структура проекта
+* `cmd/threat-monitoring/main.go` — точка входа в приложение
+* `internal/api/server.go` — настройка HTTP-сервера и маршрутов
+* `internal/app/handler/handler.go` — обработка HTTP-запросов
+* `internal/app/repository/database.go` — подключение к PostgreSQL
+* `internal/app/repository/minio.go` — работа с MinIO
+* `internal/app/repository/models.go` — описание моделей данных
+* `internal/app/repository/repository.go` — методы доступа к данным
+* `internal/app/pkg/middlewares.go` — middleware для приложения
+* `internal/app/pkg/metrics.go` — сбор метрик Prometheus
 
-### Основные компоненты приложения:
-* `main.go` — точка входа в приложение
-* `server.go` — конфигурация сервера и контейнеров
-* `handler.go` — обработчики запросов
-* `database.go` — работа с PostgreSQL
-* `minio.go` — работа с хранилищем объектов
-* `models.go` — описание структуры данных
-* `repository.go` — методы работы с БД
+## Docker Compose
+В каталоге `backend/compose` находятся настройки Docker Compose для:
+* PostgreSQL
+* MinIO
+* Adminer
 
-### Контейнеры Docker:
-* **Minio** — хранение файлов и изображений
-* **PostgreSQL** — база данных
-* **Adminer** — веб-интерфейс для управления БД
+Запускайте контейнеры из этой папки.
 
-### Вспомогательные файлы:
-* `go.mod`, `go.sum` — зависимости проекта
-* `.pre-commit-config.yaml` — конфигурация pre-commit
-* `golangci.yml` — настройки линтера
-* `.gitignore` — игнорируемые файлы
+## Технологии и документации
+* [Go](https://goru.dev/doc)
+* [Gin](https://gin-gonic.com/ru/docs/)
+* [PostgreSQL](https://www.postgresql.org/docs/)
+* [MinIO](https://docs.min.io/aistor/)
+* [Docker Compose](https://docs.docker.com/)
+* [Redis](https://redis-docs.ru/) (JWT токены)
+* [Prometheus](https://prometheus.io/docs/introduction/overview/)
+* [Grafana](https://grafana.com/docs/)
 
-## Используемые технологии
-
-* **Go** — основной язык разработки
-* **Docker Compose** — оркестрация контейнеров
-* **PostgreSQL** — реляционная база данных
-* **Minio** — объектное хранилище
-* **Adminer** — инструмент администрирования БД
-* **Redis** - No-SQL БД для хранения JWT токенов
-* **Prometheus** - сбор метрик
-* **grafana** - визуализация метрик
-
-## Используемые пакеты Go
-
-* **Gin** - веб-фреймворк для написания приложений
-* **Logrus** - структуированное логгирование
-* **gORM** - ORM
-* **JWT** - создание зашифрованных токенов
-
-## Документация
-
-Для работы с тестовыми данными используйте следующие параметры в Adminer:
+## Параметры для Adminer
+Используйте следующие данные для подключения к базе данных:
 * Сервер: `threat-monitoring-db`
 * Пользователь: `postgres`
 * Пароль: `postgres`
-* База данных: `threat-monitoring`
-
-## Контактная информация
-Для вопросов и предложений обращайтесь к разработчику.
+* База: `threat-monitoring`
