@@ -56,7 +56,7 @@ docker compose up -d
 ## Технологии и документации
 * [Go](https://goru.dev/doc)
 * [Gin](https://gin-gonic.com/ru/docs/)
-* [PostgreSQL]()
+* [PostgreSQL](https://www.postgresql.org/docs/)
 * [MinIO](https://docs.min.io/aistor/)
 * [Docker Compose](https://docs.docker.com/)
 * [Redis](https://redis-docs.ru/) (JWT токены)
