@@ -8,7 +8,7 @@
 * Go 1.20 или новее
 
 ## Быстрый запуск с контейнерами
-1. Перейдите в папку backend:
+1. Перейдите в папку клонированного репозитория (например, backend):
 ```bash
 cd backend
 ```
@@ -16,11 +16,6 @@ cd backend
 ```bash
 cd compose
 docker compose up -d
-```
-3. Запустите backend-приложение:
-```bash
-cd ..
-go run ./cmd/threat-monitoring/main.go
 ```
 
 Если контейнеры успешно запустились (статус started в `docker compose ps`), то сам сервис будет доступен по адресу:
