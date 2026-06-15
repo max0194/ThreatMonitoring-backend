@@ -34,4 +34,4 @@ go.work.sum
 compose/minio-data
 
 Dockerfile
-scripts
+.dockerignore
