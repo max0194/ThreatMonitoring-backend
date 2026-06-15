@@ -18,8 +18,8 @@
 
 1. Клонирование репозиториев:
 ```bash
-git clone https://github.com/max0194/threat-monitoring-backend.git
-git clone https://github.com/max0194/threat-monitoring-frontend-.git
+git clone https://github.com/max0194/ThreatMonitoring-backend.git
+git clone https://github.com/max0194/ThreatMonitoring-frontend.git
 ```
 
 2. Запуск контейнеров:
